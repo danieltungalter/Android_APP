@@ -2,23 +2,32 @@ package com.example.tungc.myfyp;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
+import com.google.android.gms.location.places.ui.PlaceSelectionListener;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.MapsInitializer;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -31,7 +40,7 @@ import com.google.android.gms.maps.model.MarkerOptions;
  * Use the {@link tab2#newInstance} factory method to
  * create an instance of this fragment.
  */
-public class tab2 extends Fragment {
+public class tab2 extends Fragment implements ActivityCompat.OnRequestPermissionsResultCallback {
     // TODO: Rename parameter arguments, choose names that match
     // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER
     private static final String ARG_PARAM1 = "param1";
@@ -43,6 +52,8 @@ public class tab2 extends Fragment {
 
     MapView mMapView;
     private GoogleMap googleMap;
+    public static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
+    public static final String TAG = "Messages";
 
     private OnFragmentInteractionListener mListener;
 
@@ -91,35 +102,54 @@ public class tab2 extends Fragment {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
-        mMapView.getMapAsync(new OnMapReadyCallback() {
+        SupportMapFragment mapFragment = (SupportMapFragment) getChildFragmentManager().findFragmentById(R.id.frg);
+        mapFragment.getMapAsync(new OnMapReadyCallback() {
             @Override
             public void onMapReady(GoogleMap mMap) {
                 googleMap = mMap;
+                googleMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
+                enableMyLocationIfPermitted();
 
-                // For showing a move to my location button
-                final int MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 99;
-                if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    if (shouldShowRequestPermissionRationale(
-                            Manifest.permission.ACCESS_FINE_LOCATION)) {
-                        // Show an explanation to the user *asynchronously* -- don't block
-                        // this thread waiting for the user's response! After the user
-                        // sees the explanation, try again to request the permission.
-                    } else {
-                        // No explanation needed; request the permission
-                        requestPermissions(
-                                new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                                MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
+                googleMap.getUiSettings().setMyLocationButtonEnabled(true);
+                googleMap.getUiSettings().setZoomControlsEnabled(true);
+                googleMap.getUiSettings().setCompassEnabled(true);
 
-                        // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-                        // app-defined int constant. The callback method gets the
-                        // result of the request.
+                PlaceAutocompleteFragment autocompleteFragment  = (PlaceAutocompleteFragment)
+                        getActivity().getFragmentManager().findFragmentById(R.id.place_autocomplete_fragment);
+
+                autocompleteFragment.setOnPlaceSelectedListener(new PlaceSelectionListener() {
+                    @Override
+                    public void onPlaceSelected(Place place) {
+                        googleMap.clear();
+                        googleMap.addMarker(new MarkerOptions().position(place.getLatLng()).title(place.getName().toString()));
+                        googleMap.moveCamera(CameraUpdateFactory.newLatLng(place.getLatLng()));
+                        googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(place.getLatLng(), 12.0f));
+                        Log.i(TAG, "Place: " + place.getName());
                     }
-                } else {
-                    // Permission has already been granted
-                    googleMap.setMyLocationEnabled(true);
-                }
+
+                    @Override
+                    public void onError(Status status) {
+                        Log.i(TAG, "An error occurred: " + status);
+                    }
+
+                });
+
+                googleMap.setOnMyLocationButtonClickListener(new GoogleMap.OnMyLocationButtonClickListener() {
+                    @Override
+                    public boolean onMyLocationButtonClick() {
+                        Toast.makeText(getContext(), "Positioning now", Toast.LENGTH_SHORT).show();
+                        // Return false so that we don't consume the event and the default behavior still occurs
+                        // (the camera animates to the user's current position).
+                        return false;
+                    }
+                });
+                googleMap.setOnMyLocationClickListener(new GoogleMap.OnMyLocationClickListener() {
+                    @Override
+                    public void onMyLocationClick(@NonNull Location location) {
+                        Toast.makeText(getContext(), "Current location:\n" + location, Toast.LENGTH_LONG).show();
+                        googleMap.setMinZoomPreference(12);
+                    }
+                });
 
                 // For dropping a marker at a point on the Map
                 LatLng location1 = new LatLng(22.3385249, 114.1963598);
@@ -140,8 +170,36 @@ public class tab2 extends Fragment {
                 googleMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
             }
         });
-
         return rootView;
+    }
+
+    private void enableMyLocationIfPermitted() {
+        if (ContextCompat.checkSelfPermission(getContext(),
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(getActivity(),
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        } else if (googleMap != null) {
+            googleMap.setMyLocationEnabled(true);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case LOCATION_PERMISSION_REQUEST_CODE: {
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    enableMyLocationIfPermitted();
+                } else {
+                    Toast.makeText(getContext(), " Permission was denied.", Toast.LENGTH_SHORT).show();
+                }
+                return;
+            }
+        }
     }
 
     @Override
@@ -168,6 +226,11 @@ public class tab2 extends Fragment {
         mMapView.onLowMemory();
     }
 
+    public void onButtonPressed(Uri uri) {
+    if (mListener != null) {
+        mListener.onFragmentInteraction(uri);
+    }
+}
     @Override
     public void onAttach(Context context) {
         super.onAttach(context);
